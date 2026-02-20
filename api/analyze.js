@@ -51,7 +51,7 @@ Return ONLY valid JSON, no markdown, no extra text:
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-5',
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 2000,
         system: SYSTEM,
         messages: [{
@@ -59,6 +59,27 @@ Return ONLY valid JSON, no markdown, no extra text:
           content: `Evaluate this vertical software company:\n\nCompany: ${company}\n\nDescription: ${description}\n\nBe specific and critical. Score honestly.`
         }]
       })
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      console.error('Anthropic error:', JSON.stringify(data))
+      return res.status(500).json({ error: data?.error?.message || 'Anthropic API error' })
+    }
+
+    if (!data.content?.[0]?.text) {
+      console.error('Unexpected response:', JSON.stringify(data))
+      return res.status(500).json({ error: 'No content in response' })
+    }
+
+    const text = data.content[0].text.replace(/```json|```/g, '').trim()
+    const parsed = JSON.parse(text)
+    res.status(200).json(parsed)
+  } catch (e) {
+    console.error('Handler error:', e.message)
+    res.status(500).json({ error: e.message })
+  }
     })
 
     const data = await response.json()
