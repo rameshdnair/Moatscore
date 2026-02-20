@@ -99,7 +99,13 @@ export default async function handler(req, res) {
   let parsed;
 
   try {
-    const text = data.content[0].text.replace(/```json/g, "").replace(/```/g, "").trim();
+    const raw = data.content[0].text;
+    const start = raw.indexOf("{");
+    const end = raw.lastIndexOf("}");
+    if (start === -1 || end === -1) {
+      throw new Error("No JSON object found in response");
+    }
+    const text = raw.slice(start, end + 1);
     parsed = JSON.parse(text);
   } catch (jsonErr) {
     console.error("JSON parse failed:", jsonErr.message);
