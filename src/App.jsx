@@ -189,6 +189,40 @@ function HomeView({ onResults }) {
   const [desc, setDesc]         = useState('')
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState('')
+  const [researching, setResearching]   = useState(false)
+  const [showExtract, setShowExtract]   = useState(false)
+  const [rawText, setRawText]           = useState('')
+  const [extracting, setExtracting]     = useState(false)
+
+  const autoResearch = async () => {
+    if (!company.trim()) { setError('Enter a company name first.'); return }
+    setError(''); setResearching(true)
+    try {
+      const res = await fetch('/api/research', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company: company.trim() })
+      })
+      const data = await res.json()
+      if (data.description) setDesc(data.description)
+    } catch (e) { setError('Research failed: ' + e.message) }
+    finally { setResearching(false) }
+  }
+
+  const extractFromText = async () => {
+    if (!rawText.trim()) return
+    setExtracting(true)
+    try {
+      const res = await fetch('/api/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: rawText, company: company.trim() })
+      })
+      const data = await res.json()
+      if (data.description) { setDesc(data.description); setShowExtract(false); setRawText('') }
+    } catch (e) { setError('Extraction failed: ' + e.message) }
+    finally { setExtracting(false) }
+  }
 
   const run = async () => {
     if (!company.trim() || !desc.trim()) { setError('Please fill in both fields.'); return }
@@ -215,12 +249,35 @@ function HomeView({ onResults }) {
 
       <div style={{ background:'rgba(255,255,255,0.02)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:16, padding:28, maxWidth:560, margin:'0 auto' }}>
         <label style={labelStyle}>COMPANY NAME</label>
-        <input className="input-field" value={company} onChange={e => setCompany(e.target.value)} placeholder="e.g. Veeva, Procore, Clio…" style={{ marginBottom:18 }}/>
+        <div style={{ display:'flex', gap:8, marginBottom:18 }}>
+          <input className="input-field" value={company} onChange={e => setCompany(e.target.value)} placeholder="e.g. Veeva, Procore, Clio…" style={{ marginBottom:0 }}/>
+          <button onClick={autoResearch} disabled={researching || loading}
+            style={{ background:'rgba(124,92,191,0.15)', border:'1px solid rgba(124,92,191,0.3)', color:'rgba(255,255,255,0.7)', fontSize:12, cursor:'pointer', padding:'0 14px', borderRadius:9, whiteSpace:'nowrap', fontFamily:'inherit', flexShrink:0, opacity: researching ? 0.5 : 1 }}>
+            {researching ? '…' : '🔍 Auto-fill'}
+          </button>
+        </div>
         <label style={labelStyle}>COMPANY DESCRIPTION</label>
         <textarea className="input-field" value={desc} onChange={e => setDesc(e.target.value)}
           placeholder="Describe the product, data assets, integrations, regulations, what makes customers stay…"
           style={{ minHeight:130, resize:'vertical', lineHeight:1.6, marginBottom:8 }}/>
-        <div style={{ fontSize:12, color:'rgba(255,255,255,0.22)', marginBottom:20 }}>The more detail, the sharper the analysis.</div>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: showExtract ? 10 : 20 }}>
+          <div style={{ fontSize:12, color:'rgba(255,255,255,0.22)' }}>The more detail, the sharper the analysis.</div>
+          <button onClick={() => setShowExtract(s => !s)}
+            style={{ background:'none', border:'none', color:'rgba(255,255,255,0.35)', fontSize:12, cursor:'pointer', fontFamily:'inherit', padding:0, flexShrink:0 }}>
+            {showExtract ? '↑ Hide' : '📋 Extract from doc'}
+          </button>
+        </div>
+        {showExtract && (
+          <div style={{ marginBottom:16 }}>
+            <textarea className="input-field" value={rawText} onChange={e => setRawText(e.target.value)}
+              placeholder="Paste a 10-K excerpt, website copy, earnings transcript…"
+              style={{ minHeight:90, resize:'vertical', lineHeight:1.6, marginBottom:8 }}/>
+            <button className="btn-secondary" onClick={extractFromText} disabled={extracting || !rawText.trim()}
+              style={{ width:'100%', opacity: extracting || !rawText.trim() ? 0.5 : 1 }}>
+              {extracting ? 'Extracting signals…' : 'Extract moat signals →'}
+            </button>
+          </div>
+        )}
         {error && <div style={{ color:'#ff6b6b', fontSize:13, marginBottom:14, padding:'9px 13px', background:'rgba(255,107,107,0.08)', borderRadius:7 }}>{error}</div>}
         <button className="btn-primary" onClick={run} disabled={loading} style={{ opacity:loading?0.5:1 }}>
           {loading ? 'Analyzing…' : 'Analyze Moat Strength →'}
@@ -249,9 +306,59 @@ function HomeView({ onResults }) {
 }
 
 function ResultsView({ company, results, onReset }) {
-  const printRef  = useRef(null)
+  const printRef   = useRef(null)
+  const chatEndRef = useRef(null)
   const [copied, setCopied] = useState(false)
   const [toast, setToast]   = useState('')
+  const [chatOpen, setChatOpen]           = useState(false)
+  const [chatMessages, setChatMessages]   = useState([])
+  const [chatInput, setChatInput]         = useState('')
+  const [chatStreaming, setChatStreaming]  = useState(false)
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [chatMessages])
+
+  const sendChat = async () => {
+    const msg = chatInput.trim()
+    if (!msg || chatStreaming) return
+    const userMsg = { role: 'user', content: msg }
+    const newHistory = [...chatMessages, userMsg]
+    setChatMessages([...newHistory, { role: 'assistant', content: '' }])
+    setChatInput('')
+    setChatStreaming(true)
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company, results, messages: newHistory })
+      })
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let text = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        const chunk = decoder.decode(value, { stream: true })
+        for (const line of chunk.split('\n')) {
+          if (!line.startsWith('data: ')) continue
+          const data = line.slice(6).trim()
+          if (data === '[DONE]') break
+          try {
+            const parsed = JSON.parse(data)
+            if (parsed.text) {
+              text += parsed.text
+              setChatMessages(prev => [...prev.slice(0, -1), { role: 'assistant', content: text }])
+            }
+          } catch {}
+        }
+      }
+    } catch (e) {
+      setChatMessages(prev => [...prev.slice(0, -1), { role: 'assistant', content: 'Error: ' + e.message }])
+    } finally {
+      setChatStreaming(false)
+    }
+  }
 
   useEffect(() => {
     // Reflect state in URL hash for sharing
@@ -295,6 +402,54 @@ function ResultsView({ company, results, onReset }) {
         <p style={{ fontSize:13, color:'rgba(255,255,255,0.4)', lineHeight:1.7 }}>
           Based on Nicolas Bustamante's X article <em>"10 Years Building Vertical Software: My Perspective on the Selloff."</em> He built Doctrine (Europe's largest legal platform) and Fintool (AI equity research) — giving him a unique perspective on both sides of the LLM disruption. Core insight: AI is dismantling moats built on interface complexity, workflow encoding, and public data search — while proprietary data, regulatory compliance, and transaction infrastructure remain defensible.
         </p>
+      </div>
+
+      {/* Streaming Chat */}
+      <div style={{ marginTop:16, borderRadius:12, border:'1px solid rgba(255,255,255,0.07)', overflow:'hidden' }}>
+        <button onClick={() => setChatOpen(o => !o)}
+          style={{ width:'100%', background:'rgba(255,255,255,0.02)', border:'none', padding:'14px 20px', display:'flex', alignItems:'center', gap:8, cursor:'pointer', color:'rgba(255,255,255,0.55)', fontFamily:'inherit', fontSize:13, fontWeight:600 }}>
+          <span>💬</span>
+          <span>Ask about this analysis</span>
+          <span style={{ marginLeft:'auto', transition:'transform 0.2s', transform: chatOpen ? 'rotate(180deg)' : 'none', opacity:0.4 }}>▾</span>
+        </button>
+        {chatOpen && (
+          <div style={{ background:'rgba(0,0,0,0.15)', padding:16 }}>
+            {chatMessages.length === 0 && (
+              <div style={{ fontSize:12, color:'rgba(255,255,255,0.2)', marginBottom:12, textAlign:'center', padding:'8px 0' }}>
+                Ask anything about {company}'s moats, risks, or strategy
+              </div>
+            )}
+            <div style={{ maxHeight:320, overflowY:'auto', marginBottom:12, display:'flex', flexDirection:'column', gap:10 }}>
+              {chatMessages.map((m, i) => (
+                <div key={i} style={{ display:'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                  <div style={{
+                    maxWidth:'82%', padding:'9px 13px',
+                    borderRadius: m.role === 'user' ? '12px 12px 3px 12px' : '12px 12px 12px 3px',
+                    background: m.role === 'user' ? 'rgba(124,92,191,0.22)' : 'rgba(255,255,255,0.05)',
+                    fontSize:13, lineHeight:1.65,
+                    color: m.content ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.25)'
+                  }}>
+                    {m.content || '…'}
+                  </div>
+                </div>
+              ))}
+              <div ref={chatEndRef}/>
+            </div>
+            <div style={{ display:'flex', gap:8 }}>
+              <input className="input-field" value={chatInput}
+                onChange={e => setChatInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendChat()}
+                placeholder="e.g. Why is the switching cost moat weak?"
+                style={{ flex:1, marginBottom:0 }}
+                disabled={chatStreaming}/>
+              <button className="btn-secondary" onClick={sendChat}
+                disabled={chatStreaming || !chatInput.trim()}
+                style={{ minWidth:44, opacity: chatStreaming || !chatInput.trim() ? 0.4 : 1 }}>
+                →
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </>
   )
