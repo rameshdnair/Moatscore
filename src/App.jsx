@@ -518,6 +518,57 @@ function ResultsView({ company, results, onReset }) {
   )
 }
 
+function MoatCompareRow({ moat, resultsA, resultsB, companyA, companyB }) {
+  const [open, setOpen] = useState(false)
+  const sA = resultsA.moats?.[moat.id]?.score ?? 0
+  const sB = resultsB.moats?.[moat.id]?.score ?? 0
+  const diff = sA - sB
+  const winner = diff > 0 ? 'A' : diff < 0 ? 'B' : '='
+  const winColor = diff > 0 ? '#7c5cbf' : diff < 0 ? '#5babca' : '#888'
+  return (
+    <div style={{ background:'rgba(255,255,255,0.025)', border:'1px solid rgba(255,255,255,0.06)', borderRadius:10, overflow:'hidden', cursor:'pointer' }} onClick={() => setOpen(o => !o)}>
+      <div style={{ padding:'12px 16px', display:'flex', alignItems:'center', gap:10 }}>
+        <span style={{ fontSize:18 }}>{moat.icon}</span>
+        <span style={{ flex:1, fontWeight:600, fontSize:13 }}>{moat.name}</span>
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'center', minWidth:60 }}>
+          <Bar score={sA} color="#7c5cbf"/>
+          <span style={{ fontSize:13, fontWeight:800, color:'#7c5cbf', marginTop:3 }}>{sA}/10</span>
+        </div>
+        <div style={{ width:28, textAlign:'center', fontWeight:800, fontSize:13, color:winColor }}>
+          {winner === '=' ? '=' : winner === 'A' ? `+${diff}` : `${diff}`}
+        </div>
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'center', minWidth:60 }}>
+          <Bar score={sB} color="#5babca"/>
+          <span style={{ fontSize:13, fontWeight:800, color:'#5babca', marginTop:3 }}>{sB}/10</span>
+        </div>
+        <span style={{ color:'rgba(255,255,255,0.2)', fontSize:14, transition:'transform 0.2s', transform:open?'rotate(180deg)':'none', marginLeft:4 }}>▾</span>
+      </div>
+      {open && (
+        <div style={{ padding:'0 16px 16px', borderTop:'1px solid rgba(255,255,255,0.05)', display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+          {[{r:resultsA, company:companyA, col:'#7c5cbf'}, {r:resultsB, company:companyB, col:'#5babca'}].map(({r, company, col}, ci) => {
+            const moatR = r.moats?.[moat.id]
+            return (
+              <div key={ci}>
+                <div style={{ fontSize:11, fontWeight:700, color:col, marginBottom:8 }}>{company}</div>
+                {moatR?.examples?.map((e,i) => (
+                  <div key={i} style={{ display:'flex', gap:7, marginBottom:4, fontSize:12, color:'rgba(255,255,255,0.6)' }}>
+                    <span style={{ color:col, flexShrink:0 }}>◆</span><span>{e}</span>
+                  </div>
+                ))}
+                {moatR?.recommendations?.slice(0,1).map((rec,i) => (
+                  <div key={i} style={{ display:'flex', gap:7, marginTop:8, fontSize:12, color:'rgba(255,255,255,0.6)' }}>
+                    <span style={{ color:'#6bcb77', flexShrink:0 }}>→</span><span>{rec}</span>
+                  </div>
+                ))}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function CompareView() {
   const [a, setA]           = useState({ company:'', desc:'' })
   const [b, setB]           = useState({ company:'', desc:'' })
@@ -586,63 +637,9 @@ function CompareView() {
           {/* Moat-by-moat diff */}
           <div style={{ fontSize:11, color:'rgba(255,255,255,0.22)', letterSpacing:'0.14em', marginBottom:12, fontFamily:'monospace' }}>MOAT COMPARISON — tap rows to expand</div>
           <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:32 }}>
-            {MOATS.map(moat => {
-              const sA = resultsA.moats?.[moat.id]?.score ?? 0
-              const sB = resultsB.moats?.[moat.id]?.score ?? 0
-              const diff = sA - sB
-              const winner = diff > 0 ? 'A' : diff < 0 ? 'B' : '='
-              const winColor = diff > 0 ? '#7c5cbf' : diff < 0 ? '#5babca' : '#888'
-              const [open, setOpen] = useState(false)
-              return (
-                <div key={moat.id} style={{ background:'rgba(255,255,255,0.025)', border:'1px solid rgba(255,255,255,0.06)', borderRadius:10, overflow:'hidden', cursor:'pointer' }} onClick={() => setOpen(o=>!o)}>
-                  <div style={{ padding:'12px 16px', display:'flex', alignItems:'center', gap:10 }}>
-                    <span style={{ fontSize:18 }}>{moat.icon}</span>
-                    <span style={{ flex:1, fontWeight:600, fontSize:13 }}>{moat.name}</span>
-
-                    {/* Score A */}
-                    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', minWidth:60 }}>
-                      <Bar score={sA} color="#7c5cbf"/>
-                      <span style={{ fontSize:13, fontWeight:800, color:'#7c5cbf', marginTop:3 }}>{sA}/10</span>
-                    </div>
-
-                    <div style={{ width:28, textAlign:'center', fontWeight:800, fontSize:13, color:winColor }}>
-                      {winner === '=' ? '=' : winner === 'A' ? `+${diff}` : `${diff}`}
-                    </div>
-
-                    {/* Score B */}
-                    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', minWidth:60 }}>
-                      <Bar score={sB} color="#5babca"/>
-                      <span style={{ fontSize:13, fontWeight:800, color:'#5babca', marginTop:3 }}>{sB}/10</span>
-                    </div>
-
-                    <span style={{ color:'rgba(255,255,255,0.2)', fontSize:14, transition:'transform 0.2s', transform:open?'rotate(180deg)':'none', marginLeft:4 }}>▾</span>
-                  </div>
-
-                  {open && (
-                    <div style={{ padding:'0 16px 16px', borderTop:'1px solid rgba(255,255,255,0.05)', display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
-                      {[{r:resultsA, company:a.company, col:'#7c5cbf'}, {r:resultsB, company:b.company, col:'#5babca'}].map(({r,company:c,col}, ci) => {
-                        const moatR = r.moats?.[moat.id]
-                        return (
-                          <div key={ci}>
-                            <div style={{ fontSize:11, fontWeight:700, color:col, marginBottom:8 }}>{c}</div>
-                            {moatR?.examples?.map((e,i) => (
-                              <div key={i} style={{ display:'flex', gap:7, marginBottom:4, fontSize:12, color:'rgba(255,255,255,0.6)' }}>
-                                <span style={{ color:col, flexShrink:0 }}>◆</span><span>{e}</span>
-                              </div>
-                            ))}
-                            {moatR?.recommendations?.slice(0,1).map((rec,i) => (
-                              <div key={i} style={{ display:'flex', gap:7, marginTop:8, fontSize:12, color:'rgba(255,255,255,0.6)' }}>
-                                <span style={{ color:'#6bcb77', flexShrink:0 }}>→</span><span>{rec}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
+            {MOATS.map(moat => (
+              <MoatCompareRow key={moat.id} moat={moat} resultsA={resultsA} resultsB={resultsB} companyA={a.company} companyB={b.company}/>
+            ))}
           </div>
         </>
       )}
