@@ -1,4 +1,4 @@
-export const config = { runtime: 'edge' }
+export const config = { maxDuration: 60 }
 
 const SYSTEM_PROMPT = `You are an expert analyst evaluating vertical software companies using Nicolas Bustamante's 10-moat framework from his X article "10 Years Building Vertical Software: My Perspective on the Selloff."
 
@@ -51,26 +51,20 @@ Return ONLY valid JSON. No markdown fences. No extra text. Schema:
   }
 }`
 
-export default async function handler(req) {
+export default async function handler(req, res) {
   if (req.method !== 'POST') {
-    return new Response('Method not allowed', { status: 405 })
+    return res.status(405).send('Method not allowed')
   }
 
-  const { company, description } = await req.json()
+  const { company, description } = req.body
 
   if (!company || !description) {
-    return new Response(JSON.stringify({ error: 'Missing company or description' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' }
-    })
+    return res.status(400).json({ error: 'Missing company or description' })
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
-    return new Response(JSON.stringify({ error: 'API key not configured' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    })
+    return res.status(500).json({ error: 'API key not configured' })
   }
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -94,18 +88,12 @@ export default async function handler(req) {
   const data = await response.json()
 
   if (!data.content?.[0]?.text) {
-    return new Response(JSON.stringify({ error: 'No response from model' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    })
+    return res.status(500).json({ error: 'No response from model' })
   }
 
   const text = data.content[0].text.replace(/```json|```/g, '').trim()
 
-  return new Response(text, {
-    headers: {
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*'
-    }
-  })
+  res.setHeader('Content-Type', 'application/json')
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.status(200).send(text)
 }
