@@ -492,11 +492,118 @@ function LeaderboardView({ onLoad }) {
   )
 }
 
+function DebateView() {
+  const [company, setCompany]   = useState('')
+  const [desc, setDesc]         = useState('')
+  const [loading, setLoading]   = useState(false)
+  const [error, setError]       = useState('')
+  const [result, setResult]     = useState(null)
+
+  const run = async () => {
+    if (!company.trim() || !desc.trim()) { setError('Please fill in both fields.'); return }
+    setError(''); setLoading(true); setResult(null)
+    try {
+      const res = await fetch('/api/debate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company: company.trim(), description: desc.trim() })
+      })
+      if (!res.ok) throw new Error(`API error ${res.status}`)
+      setResult(await res.json())
+    } catch (e) { setError('Debate failed: ' + e.message) }
+    finally { setLoading(false) }
+  }
+
+  const scoreColor = s => s >= 7 ? '#6bcb77' : s >= 4 ? '#ffd93d' : '#ff6b6b'
+
+  return (
+    <div style={{ paddingTop:40 }}>
+      <div style={{ textAlign:'center', marginBottom:32 }}>
+        <h2 style={{ fontSize:22, fontWeight:800, letterSpacing:'-0.02em', marginBottom:8 }}>⚔️ Bull vs Bear Debate</h2>
+        <p style={{ color:'rgba(255,255,255,0.4)', fontSize:14 }}>Two Claude agents argue opposite sides, then a third synthesizes the verdict.</p>
+      </div>
+
+      {!result && (
+        <div style={{ background:'rgba(255,255,255,0.02)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:16, padding:28, maxWidth:560, margin:'0 auto' }}>
+          <label style={labelStyle}>COMPANY NAME</label>
+          <input className="input-field" value={company} onChange={e => setCompany(e.target.value)} placeholder="e.g. Veeva, Procore, Clio…" style={{ marginBottom:18 }}/>
+          <label style={labelStyle}>COMPANY DESCRIPTION</label>
+          <textarea className="input-field" value={desc} onChange={e => setDesc(e.target.value)}
+            placeholder="Describe the product, data assets, integrations, regulations…"
+            style={{ minHeight:120, resize:'vertical', lineHeight:1.6, marginBottom:16 }}/>
+          {error && <div style={{ color:'#ff6b6b', fontSize:13, marginBottom:14, padding:'9px 13px', background:'rgba(255,107,107,0.08)', borderRadius:7 }}>{error}</div>}
+          <button className="btn-primary" onClick={run} disabled={loading} style={{ opacity:loading?0.5:1 }}>
+            {loading ? 'Debating…' : 'Start Debate →'}
+          </button>
+          {loading && <div style={{ textAlign:'center', marginTop:16, fontSize:12, color:'rgba(255,255,255,0.3)' }}>Running bull & bear agents in parallel, then synthesizing…</div>}
+        </div>
+      )}
+
+      {result && (
+        <>
+          <div style={{ display:'flex', gap:16, flexWrap:'wrap', marginBottom:24 }}>
+            {/* Bull */}
+            <div style={{ flex:1, minWidth:280, background:'rgba(107,203,119,0.05)', border:'1px solid rgba(107,203,119,0.2)', borderRadius:14, padding:24 }}>
+              <div style={{ fontSize:13, fontWeight:800, color:'#6bcb77', marginBottom:14, letterSpacing:'0.05em' }}>🐂 BULL CASE</div>
+              {result.bull.split('\n\n').filter(Boolean).map((p, i) => (
+                <p key={i} style={{ fontSize:13, color:'rgba(255,255,255,0.7)', lineHeight:1.75, marginBottom:12 }}>{p}</p>
+              ))}
+            </div>
+            {/* Bear */}
+            <div style={{ flex:1, minWidth:280, background:'rgba(255,107,107,0.05)', border:'1px solid rgba(255,107,107,0.2)', borderRadius:14, padding:24 }}>
+              <div style={{ fontSize:13, fontWeight:800, color:'#ff6b6b', marginBottom:14, letterSpacing:'0.05em' }}>🐻 BEAR CASE</div>
+              {result.bear.split('\n\n').filter(Boolean).map((p, i) => (
+                <p key={i} style={{ fontSize:13, color:'rgba(255,255,255,0.7)', lineHeight:1.75, marginBottom:12 }}>{p}</p>
+              ))}
+            </div>
+          </div>
+
+          {/* Synthesis */}
+          <div style={{ background:'linear-gradient(135deg,rgba(124,92,191,0.1),rgba(90,63,160,0.05))', border:'1px solid rgba(124,92,191,0.25)', borderRadius:16, padding:28, marginBottom:24 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:16, marginBottom:20, flexWrap:'wrap' }}>
+              <div style={{ fontSize:13, fontWeight:800, color:'#7c5cbf', letterSpacing:'0.08em' }}>⚖️ SYNTHESIS</div>
+              <div style={{ flex:1 }}/>
+              <div style={{ textAlign:'center' }}>
+                <div style={{ fontSize:10, color:'rgba(255,255,255,0.3)', marginBottom:2 }}>DEFENSIBILITY</div>
+                <div style={{ fontSize:28, fontWeight:800, color: scoreColor(result.synthesis.score) }}>{result.synthesis.score}/10</div>
+              </div>
+            </div>
+            <p style={{ fontSize:15, fontWeight:600, color:'#fff', marginBottom:18, lineHeight:1.5 }}>{result.synthesis.verdict}</p>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:18 }}>
+              <div>
+                <div style={{ fontSize:10, fontWeight:700, color:'#6bcb77', letterSpacing:'0.1em', marginBottom:8 }}>BULL WINS ON</div>
+                {result.synthesis.bullPoints?.map((p, i) => (
+                  <div key={i} style={{ display:'flex', gap:8, marginBottom:6, fontSize:13, color:'rgba(255,255,255,0.7)' }}>
+                    <span style={{ color:'#6bcb77', flexShrink:0 }}>◆</span><span>{p}</span>
+                  </div>
+                ))}
+              </div>
+              <div>
+                <div style={{ fontSize:10, fontWeight:700, color:'#ff6b6b', letterSpacing:'0.1em', marginBottom:8 }}>BEAR WINS ON</div>
+                {result.synthesis.bearPoints?.map((p, i) => (
+                  <div key={i} style={{ display:'flex', gap:8, marginBottom:6, fontSize:13, color:'rgba(255,255,255,0.7)' }}>
+                    <span style={{ color:'#ff6b6b', flexShrink:0 }}>◆</span><span>{p}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <p style={{ fontSize:13, color:'rgba(255,255,255,0.55)', lineHeight:1.7, borderTop:'1px solid rgba(255,255,255,0.06)', paddingTop:16 }}>{result.synthesis.recommendation}</p>
+          </div>
+
+          <div style={{ textAlign:'center' }}>
+            <button className="btn-secondary" onClick={() => setResult(null)}>← New Debate</button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ─── App Shell ───────────────────────────────────────────────────────────────
 
 const labelStyle = { display:'block', fontSize:12, fontWeight:700, color:'rgba(255,255,255,0.45)', marginBottom:8, letterSpacing:'0.08em' }
 
-const TABS = ['Analyze', 'Compare', 'Leaderboard']
+const TABS = ['Analyze', 'Compare', 'Debate', 'Leaderboard']
 
 export default function App() {
   const [tab, setTab]         = useState('Analyze')
@@ -569,6 +676,7 @@ export default function App() {
         {tab === 'Analyze' && !showResults && <HomeView onResults={handleResults}/>}
         {tab === 'Analyze' && showResults  && <ResultsView company={company} results={results} onReset={handleReset}/>}
         {tab === 'Compare'     && <div style={{ paddingTop:40 }}><CompareView/></div>}
+        {tab === 'Debate'      && <DebateView/>}
         {tab === 'Leaderboard' && <div style={{ paddingTop:40 }}><LeaderboardView/></div>}
       </div>
 
